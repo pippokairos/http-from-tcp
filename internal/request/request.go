@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"io"
+
+	"httpfromtcp/internal/headers"
 )
 
 const bufferSize = 4096
@@ -15,10 +17,12 @@ var (
 	ErrRequestIncomplete      = errors.New("incomplete request")
 	ErrInvalidRequestLine     = errors.New("invalid request line")
 	ErrUnsupportedHTTPVersion = errors.New("unsupported HTTP version")
+	ErrInvalidParserState     = errors.New("invalid parser state")
 )
 
 type Request struct {
 	RequestLine RequestLine
+	Headers     headers.Headers
 	State       ParserState
 }
 
@@ -31,13 +35,15 @@ type RequestLine struct {
 type ParserState string
 
 const (
-	StateInit ParserState = "initialized"
-	StateDone ParserState = "done"
+	StateInit    ParserState = "initialized"
+	StateHeaders ParserState = "headers"
+	StateDone    ParserState = "done"
 )
 
 func newRequest() *Request {
 	return &Request{
-		State: StateInit,
+		Headers: headers.NewHeaders(),
+		State:   StateInit,
 	}
 }
 
@@ -52,7 +58,7 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 		}
 
 		read, err := reader.Read(b[bufLen:])
-		if err != nil && err != io.EOF {
+		if err != nil {
 			if errors.Is(err, io.EOF) {
 				req.State = StateDone
 				break
@@ -121,7 +127,8 @@ func (r *Request) parse(data []byte) (int, error) {
 	read := 0
 
 	for {
-		if r.init() {
+		switch r.State {
+		case StateInit:
 			reqLine, n, err := parseRequestLine(data)
 			if err != nil {
 				return 0, err
@@ -133,17 +140,31 @@ func (r *Request) parse(data []byte) (int, error) {
 
 			r.RequestLine = *reqLine
 			read += n
-			r.State = StateDone
-		}
+			r.State = StateHeaders
 
-		if r.done() {
+		case StateHeaders:
+			n, done, err := r.Headers.Parse(data[read:])
+			if err != nil {
+				return 0, err
+			}
+
+			if n == 0 {
+				return read, nil
+			}
+
+			read += n
+
+			if done {
+				r.State = StateDone
+			}
+
+		case StateDone:
 			return read, nil
+
+		default:
+			return 0, ErrInvalidParserState
 		}
 	}
-}
-
-func (r *Request) init() bool {
-	return r.State == StateInit
 }
 
 func (r *Request) done() bool {

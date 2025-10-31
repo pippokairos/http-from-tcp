@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"strconv"
 
 	"httpfromtcp/internal/headers"
 )
@@ -17,12 +18,14 @@ var (
 	ErrRequestIncomplete      = errors.New("incomplete request")
 	ErrInvalidRequestLine     = errors.New("invalid request line")
 	ErrUnsupportedHTTPVersion = errors.New("unsupported HTTP version")
+	ErrBodyTooLarge           = errors.New("body exceeds Content-Length")
 	ErrInvalidParserState     = errors.New("invalid parser state")
 )
 
 type Request struct {
 	RequestLine RequestLine
 	Headers     headers.Headers
+	Body        []byte
 	State       ParserState
 }
 
@@ -37,6 +40,7 @@ type ParserState string
 const (
 	StateInit    ParserState = "initialized"
 	StateHeaders ParserState = "headers"
+	StateBody    ParserState = "body"
 	StateDone    ParserState = "done"
 )
 
@@ -59,10 +63,6 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 
 		read, err := reader.Read(b[bufLen:])
 		if err != nil {
-			if errors.Is(err, io.EOF) {
-				req.State = StateDone
-				break
-			}
 			return nil, err
 		}
 
@@ -76,10 +76,6 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 		if parsed > 0 {
 			copy(b, b[parsed:bufLen])
 			bufLen -= parsed
-		}
-
-		if err == io.EOF && !req.done() {
-			return nil, ErrRequestIncomplete
 		}
 	}
 
@@ -155,6 +151,39 @@ func (r *Request) parse(data []byte) (int, error) {
 			read += n
 
 			if done {
+				if r.hasBody() {
+					r.State = StateBody
+				} else {
+					r.State = StateDone
+				}
+			}
+
+		case StateBody:
+			cl := r.Headers.Get(headers.ContentLengthHeader)
+			if cl == "" {
+				return read, nil
+			}
+
+			contentLength, err := strconv.Atoi(cl)
+			if err != nil {
+				return 0, err
+			}
+
+			if contentLength == 0 {
+				r.State = StateDone
+				return read, nil
+			}
+
+			if len(data[read:]) == 0 {
+				return read, nil
+			}
+
+			remaining := contentLength - len(r.Body)
+			n := min(remaining, len(data[read:]))
+			r.Body = append(r.Body, data[read:read+n]...)
+			read += n
+
+			if len(r.Body) == contentLength {
 				r.State = StateDone
 			}
 
@@ -169,4 +198,18 @@ func (r *Request) parse(data []byte) (int, error) {
 
 func (r *Request) done() bool {
 	return r.State == StateDone
+}
+
+func (r *Request) hasBody() bool {
+	cl := r.Headers.Get(headers.ContentLengthHeader)
+	if cl == "" {
+		return false
+	}
+
+	contentLength, err := strconv.Atoi(cl)
+	if err != nil || contentLength == 0 {
+		return false
+	}
+
+	return true
 }

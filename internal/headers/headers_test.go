@@ -15,7 +15,7 @@ func TestParse(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, headers)
 	assert.Equal(t, "localhost:42069", headers["host"])
-	assert.Equal(t, 23, n)
+	assert.Equal(t, 25, n)
 	assert.True(t, done)
 
 	// Test: Valid single header with extra whitespaces
@@ -25,7 +25,7 @@ func TestParse(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, headers)
 	assert.Equal(t, "localhost:42069", headers["host"])
-	assert.Equal(t, 33, n)
+	assert.Equal(t, 35, n)
 	assert.True(t, done)
 
 	// Test: Valid 2 headers with existing headers
@@ -39,7 +39,7 @@ func TestParse(t *testing.T) {
 	assert.Equal(t, "curl/7.81.0", headers["user-agent"])
 	assert.Equal(t, "localhost:42069", headers["host"])
 	assert.Equal(t, "*/*", headers["accept"])
-	assert.Equal(t, 36, n)
+	assert.Equal(t, 38, n)
 	assert.True(t, done)
 
 	// Test: Invalid spacing header
@@ -66,7 +66,7 @@ func TestParse(t *testing.T) {
 	require.NotNil(t, headers)
 	assert.Equal(t, "localhost:42069", headers["host"])
 	assert.Equal(t, "en, nl", headers["accept-language"])
-	assert.Equal(t, 65, n)
+	assert.Equal(t, 67, n)
 	assert.True(t, done)
 
 	// Test: Multiple values with the same name in headers
@@ -77,6 +77,6 @@ func TestParse(t *testing.T) {
 	require.NotNil(t, headers)
 	assert.Equal(t, "localhost:42069", headers["host"])
 	assert.Equal(t, "en, nl, it", headers["accept-language"])
-	assert.Equal(t, 86, n)
+	assert.Equal(t, 88, n)
 	assert.True(t, done)
 }

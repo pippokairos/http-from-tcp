@@ -7,14 +7,21 @@ import (
 	"strings"
 )
 
-var CRLF = []byte("\r\n")
+const ContentLengthHeader = "Content-Length"
 
-var ErrInvalidHeader = errors.New("invalid header format")
+var (
+	CRLF             = []byte("\r\n")
+	ErrInvalidHeader = errors.New("invalid header format")
+)
 
 type Headers map[string]string
 
 func NewHeaders() Headers {
 	return Headers{}
+}
+
+func (h Headers) Get(name string) string {
+	return h[strings.ToLower(name)]
 }
 
 func parseHeader(fieldLine []byte) (string, string, error) {
@@ -64,6 +71,7 @@ func (h Headers) Parse(b []byte) (int, bool, error) {
 		}
 
 		if idx == 0 {
+			read += len(CRLF)
 			done = true
 			break
 		}

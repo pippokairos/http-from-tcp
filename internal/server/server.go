@@ -2,23 +2,37 @@ package server
 
 import (
 	"fmt"
+	"log"
 	"net"
 
+	"httpfromtcp/internal/request"
 	"httpfromtcp/internal/response"
 )
 
 type Server struct {
-	port   int
-	closed bool
+	handler Handler
+	closed  bool
 }
 
-func Serve(port int) (*Server, error) {
+type Handler func(w *response.Writer, req *request.Request)
+
+type HandlerError struct {
+	StatusCode response.StatusCode
+	Message    string
+}
+
+func (handlerError HandlerError) write(w *response.Writer) {
+	w.WriteHeaders(response.GetDefaultHeaders(len(handlerError.Message)))
+	w.Writer.Write([]byte(handlerError.Message))
+}
+
+func Serve(port int, handler Handler) (*Server, error) {
 	s := &Server{
-		port:   port,
-		closed: false,
+		handler: handler,
+		closed:  false,
 	}
 
-	l, err := net.Listen("tcp", fmt.Sprintf(":%d", s.port))
+	l, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
 		return nil, err
 	}
@@ -36,12 +50,12 @@ func (s *Server) Close() error {
 
 func (s *Server) listen(l net.Listener) {
 	for {
-		if s.closed {
-			return
-		}
-
 		conn, err := l.Accept()
 		if err != nil {
+			if s.closed {
+				return
+			}
+			log.Println("Error accepting connection:", err)
 			continue
 		}
 
@@ -52,17 +66,16 @@ func (s *Server) listen(l net.Listener) {
 func (s *Server) handle(conn net.Conn) {
 	defer conn.Close()
 
-	err := response.WriteStatusLine(conn, response.StatusOK)
+	responseWriter := response.NewWriter(conn)
+	req, err := request.RequestFromReader(conn)
 	if err != nil {
+		handlerError := &HandlerError{
+			StatusCode: response.StatusBadRequest,
+			Message:    err.Error(),
+		}
+		handlerError.write(responseWriter)
 		return
 	}
 
-	body := "Hello World!"
-
-	err = response.WriteHeaders(conn, response.GetDefaultHeaders(len(body)))
-	if err != nil {
-		return
-	}
-
-	conn.Write([]byte(body))
+	s.handler(responseWriter, req)
 }

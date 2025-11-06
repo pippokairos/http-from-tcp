@@ -109,6 +109,18 @@ func main() {
 
 				return
 			}
+		} else if req.RequestLine.RequestTarget == "/video" {
+			data, err := os.ReadFile("assets/vim.mp4")
+			if err != nil {
+				log.Println("Error reading video file:", err)
+			}
+
+			w.WriteStatusLine(response.StatusOK)
+			h := response.GetDefaultHeaders(len(data))
+			h["Content-Type"] = "video/mp4"
+			w.WriteHeaders(h)
+			w.WriteBody(data)
+			return
 		} else if req.RequestLine.RequestTarget == "/yourproblem" {
 			status = response.StatusBadRequest
 			body = respond400()
